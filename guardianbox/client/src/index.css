@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  --gb-bg: #0a0a0f;
+  --gb-surface: #12121a;
+  --gb-surface-hover: #1a1a2e;
+  --gb-border: #2a2a3e;
+  --gb-primary: #6366f1;
+  --gb-primary-hover: #818cf8;
+  --gb-accent: #22d3ee;
+  --gb-text: #e2e8f0;
+  --gb-text-muted: #94a3b8;
+  --gb-danger: #ef4444;
+  --gb-success: #22c55e;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--gb-bg);
+  color: var(--gb-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+}

@@ -1,0 +1,17 @@
+{
+  "name": "guardianbox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Zero-Knowledge End-to-End Encrypted File Sharing Service",
+  "scripts": {
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "install:all": "cd client && npm install && cd ../server && npm install",
+    "test": "node --test tests/crypto.test.mjs",
+    "test:client": "cd client && npm test",
+    "proof": "node scripts/e2e-proof.mjs"
+  }
+}
+
