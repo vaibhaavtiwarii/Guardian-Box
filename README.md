@@ -2,6 +2,8 @@
 
 > **The server is blind.** Your files are encrypted in the browser before they ever leave your device. The server stores only unreadable ciphertext. Not even we can see what you share.
 
+**🌐 Live demo: [guardianbox-w5gu.onrender.com](https://guardianbox-w5gu.onrender.com)** _(free hosting — the first load after idle can take about a minute)_
+
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![Node.js](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)
@@ -158,7 +160,7 @@ The app deploys as **one web service** that serves both the API and the built Re
 
 **Free-tier behaviour:** Render spins the service down after 15 minutes without traffic, so the first request afterwards takes about a minute. The hourly cleanup job cannot run while it sleeps, so cleanup also runs on every start-up, and expiry / download limits are enforced on every request regardless.
 
-**Live demo:** _add the Render URL here after the first deploy_
+**Live demo:** <https://guardianbox-w5gu.onrender.com> — hosted on Render's free tier, so if the app has been idle the first load can take up to a minute while it wakes up.
 
 ---
 
