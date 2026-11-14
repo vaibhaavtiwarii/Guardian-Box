@@ -16,6 +16,7 @@ export async function uploadEncryptedFile(
   if (options?.maxDownloads) formData.append('maxDownloads', String(options.maxDownloads));
   
   const res = await fetch('/api/files/upload', { method: 'POST', body: formData });
+  if (res.status === 413) throw new Error('File is too large for the server upload limit.');
   if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
   return res.json();
 }
@@ -37,8 +38,8 @@ export async function downloadEncryptedFile(id: string): Promise<{
     blob,
     iv: res.headers.get('X-File-IV') || '',
     salt: res.headers.get('X-File-Salt') || '',
-    originalName: res.headers.get('X-Original-Name') || 'download',
-    mimeType: res.headers.get('X-Mime-Type') || 'application/octet-stream'
+    originalName: decodeURIComponent(res.headers.get('X-Original-Name') || 'download'),
+    mimeType: decodeURIComponent(res.headers.get('X-Mime-Type') || 'application/octet-stream')
   };
 }
 

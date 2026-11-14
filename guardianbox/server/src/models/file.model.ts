@@ -42,6 +42,23 @@ export function incrementDownloadCount(id: string): void {
   stmt.run(id);
 }
 
+/**
+ * Atomically claim one download slot. Returns false if the file has already
+ * reached its download limit (prevents the burn-after-reading race).
+ */
+export function claimDownload(id: string): boolean {
+  const stmt = db.prepare(
+    'UPDATE files SET download_count = download_count + 1 WHERE id = ? AND (max_downloads IS NULL OR download_count < max_downloads)'
+  );
+  const result = stmt.run(id) as unknown as { changes: number | bigint };
+  return Number(result.changes) > 0;
+}
+
+export function releaseDownload(id: string): void {
+  const stmt = db.prepare('UPDATE files SET download_count = download_count - 1 WHERE id = ? AND download_count > 0');
+  stmt.run(id);
+}
+
 export function getExpiredFiles(): FileRecord[] {
   const stmt = db.prepare("SELECT * FROM files WHERE expires_at IS NOT NULL AND expires_at < datetime('now')");
   return stmt.all() as unknown as FileRecord[];

@@ -14,6 +14,9 @@ const S3_BUCKET = process.env.S3_BUCKET || 'guardianbox-uploads';
 const LOCAL_STORAGE_DIR = process.env.LOCAL_STORAGE_DIR || path.join(__dirname, '..', '..', 'storage', S3_BUCKET);
 
 let useLocalFallback = process.env.STORAGE_MODE === 'local';
+// When S3_STRICT=true the server never falls back to local disk (use this for the
+// "proof the blob in S3 is encrypted" walkthrough and for production).
+const S3_STRICT = process.env.S3_STRICT === 'true';
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -56,6 +59,9 @@ export async function initStorage(): Promise<void> {
       }
     }
 
+    if (S3_STRICT) {
+      throw new Error(`[Storage] S3_STRICT is on and S3/MinIO is not reachable: ${err?.message || err}`);
+    }
     console.warn(`[Storage] S3/MinIO is not reachable (${err?.message || err}). Falling back to local encrypted object storage at: ${LOCAL_STORAGE_DIR}`);
     useLocalFallback = true;
     if (!fs.existsSync(LOCAL_STORAGE_DIR)) {
@@ -77,6 +83,7 @@ export async function putEncryptedBlob(key: string, data: Buffer, contentType: s
       );
       return;
     } catch (err) {
+      if (S3_STRICT) throw err;
       console.warn(`[Storage] S3 upload failed, using local storage:`, err);
       useLocalFallback = true;
     }
@@ -107,6 +114,7 @@ export async function getEncryptedBlob(key: string): Promise<Buffer> {
       if (err?.name === 'NoSuchKey') {
         throw new Error('Object not found in storage');
       }
+      if (S3_STRICT) throw err;
       console.warn(`[Storage] S3 read failed, trying local storage:`, err);
     }
   }
@@ -129,6 +137,7 @@ export async function deleteEncryptedBlob(key: string): Promise<void> {
       );
       return;
     } catch (err) {
+      if (S3_STRICT) throw err;
       console.warn(`[Storage] S3 delete failed, checking local storage:`, err);
     }
   }
