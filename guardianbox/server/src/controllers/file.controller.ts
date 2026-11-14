@@ -53,7 +53,7 @@ export async function uploadFile(req: Request, res: Response): Promise<void> {
     await putEncryptedBlob(s3Key, req.file.buffer, 'application/octet-stream');
 
     // Save record to DB
-    createFile({
+    await createFile({
       id,
       original_name: originalName || req.file.originalname,
       mime_type: mimeType || req.file.mimetype,
@@ -83,7 +83,7 @@ export async function downloadFile(req: Request, res: Response): Promise<void> {
       res.status(404).json({ error: 'File not found' });
       return;
     }
-    const record = getFileById(id);
+    const record = await getFileById(id);
 
     if (!record) {
       res.status(404).json({ error: 'File not found' });
@@ -107,7 +107,7 @@ export async function downloadFile(req: Request, res: Response): Promise<void> {
 
     // Atomically claim a download slot (prevents two parallel requests from both
     // passing the limit check).
-    if (!claimDownload(id)) {
+    if (!(await claimDownload(id))) {
       res.status(410).json({ error: 'File has reached maximum download limit' });
       return;
     }
@@ -116,7 +116,7 @@ export async function downloadFile(req: Request, res: Response): Promise<void> {
     try {
       buffer = await getEncryptedBlob(record.s3_key);
     } catch (err) {
-      releaseDownload(id); // don't burn a download if the blob could not be read
+      await releaseDownload(id); // don't burn a download if the blob could not be read
       throw err;
     }
 
@@ -156,7 +156,7 @@ export async function getFileInfo(req: Request, res: Response): Promise<void> {
       res.status(404).json({ error: 'File not found' });
       return;
     }
-    const record = getFileById(id);
+    const record = await getFileById(id);
 
     if (!record) {
       res.status(404).json({ error: 'File not found' });

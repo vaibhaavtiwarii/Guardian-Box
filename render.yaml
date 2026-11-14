@@ -1,0 +1,39 @@
+# Render Blueprint — one free web service that serves both the API and the built UI.
+# Secrets (marked sync: false) are entered in the Render dashboard, never committed.
+services:
+  - type: web
+    name: guardianbox
+    runtime: node
+    plan: free
+    rootDir: guardianbox
+    buildCommand: npm run install:all && npm run build
+    startCommand: node server/dist/index.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      # --- Object storage (Tigris, S3-compatible) ---
+      - key: S3_STRICT
+        value: "true"
+      - key: S3_ENDPOINT
+        value: https://t3.storage.dev
+      - key: S3_REGION
+        value: auto
+      - key: S3_FORCE_PATH_STYLE
+        value: "false"
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      # --- Metadata database (Turso) ---
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

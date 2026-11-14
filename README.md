@@ -42,7 +42,7 @@ GuardianBox is an **End-to-End Encrypted (E2EE)** file sharing service designed 
 |-------|-----------|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4 |
 | Backend | Node.js, Express 4, TypeScript |
-| Database | SQLite (Node built-in `node:sqlite`, Node 22.5+) — metadata only |
+| Database | libSQL / SQLite via `@libsql/client` — a local file in development, hosted [Turso](https://turso.tech) in production. Metadata only. |
 | Object Storage | AWS S3 or any S3-compatible store (developed against RustFS; MinIO also works) via `@aws-sdk/client-s3` |
 | Cryptography | Web Crypto API (AES-256-GCM, PBKDF2-SHA-256) |
 
@@ -70,7 +70,7 @@ GuardianBox is an **End-to-End Encrypted (E2EE)** file sharing service designed 
 
 ### Prerequisites
 
-- Node.js **22.5+** (needed for `node:sqlite`)
+- Node.js **20+**
 - npm
 - Docker (for a local S3-compatible store) **or** an AWS S3 bucket
 
@@ -125,6 +125,9 @@ Open <http://localhost:5173>.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `PORT` | `3001` | API port |
+| `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` | *(empty)* | Hosted libSQL database. Leave empty locally to use a SQLite file (`server/data/guardianbox.db`) |
+| `S3_FORCE_PATH_STYLE` | `true` | `true` for local RustFS/MinIO, `false` for hosted providers like Tigris |
+| `TRUST_PROXY` | *(empty)* | Set to `1` behind a reverse proxy (Render) so rate limiting sees real client IPs |
 | `S3_ENDPOINT` | `http://localhost:9000` | S3-compatible endpoint |
 | `S3_BUCKET` | `guardianbox-uploads` | Bucket name |
 | `S3_REGION` | `us-east-1` | Region |
@@ -135,6 +138,27 @@ Open <http://localhost:5173>.
 | `RATE_LIMIT_PER_MIN` | `120` | Per-IP request limit |
 
 > If S3 is unreachable and `S3_STRICT` is not `true`, the server falls back to local disk (`server/storage/`) for convenience during development.
+
+---
+
+## ☁️ Deployment (free tier, no credit card)
+
+The app deploys as **one web service** that serves both the API and the built React UI, plus two free hosted services for data:
+
+| Piece | Service | Role |
+|-------|---------|------|
+| Web service | [Render](https://render.com) free web service | Runs Express and serves the built UI (HTTPS is required for the Web Crypto API and is provided automatically) |
+| Metadata DB | [Turso](https://turso.tech) | File records (no keys, no plaintext) — needed because Render's free filesystem is ephemeral |
+| Encrypted blobs | [Tigris](https://www.tigrisdata.com) | S3-compatible object storage |
+
+**Steps**
+1. Create a private Tigris bucket and an access key limited to it. Create a Turso database and an auth token.
+2. In Render choose **New → Blueprint**, select this repository (it reads [`render.yaml`](render.yaml)) and enter the secret values when prompted: `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`.
+3. Every push to `main` redeploys automatically.
+
+**Free-tier behaviour:** Render spins the service down after 15 minutes without traffic, so the first request afterwards takes about a minute. The hourly cleanup job cannot run while it sleeps, so cleanup also runs on every start-up, and expiry / download limits are enforced on every request regardless.
+
+**Live demo:** _add the Render URL here after the first deploy_
 
 ---
 

@@ -7,7 +7,12 @@ const s3Client = new S3Client({
     accessKeyId: process.env.S3_ACCESS_KEY || 'minioadmin',
     secretAccessKey: process.env.S3_SECRET_KEY || 'minioadmin',
   },
-  forcePathStyle: true, // Required for MinIO compatibility
+  // Path-style addressing is needed for local MinIO/RustFS. Hosted providers such as
+  // Tigris use virtual-hosted style, so set S3_FORCE_PATH_STYLE=false there.
+  forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
+  // Don't send optional CRC checksums that some S3-compatible stores reject.
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED',
 });
 
 export default s3Client;

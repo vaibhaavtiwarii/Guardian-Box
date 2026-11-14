@@ -1,4 +1,5 @@
 import db from '../config/db';
+import type { Row } from '@libsql/client';
 
 export interface FileRecord {
   id: string;
@@ -14,62 +15,78 @@ export interface FileRecord {
   created_at: string;
 }
 
-export function createFile(record: Omit<FileRecord, 'download_count' | 'created_at'>): void {
-  const stmt = db.prepare(`
-    INSERT INTO files (id, original_name, mime_type, size, iv, salt, s3_key, expires_at, max_downloads)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run(
-    record.id,
-    record.original_name,
-    record.mime_type,
-    record.size,
-    record.iv,
-    record.salt,
-    record.s3_key,
-    record.expires_at,
-    record.max_downloads
-  );
+function toRecord(row: Row): FileRecord {
+  return {
+    id: String(row.id),
+    original_name: String(row.original_name),
+    mime_type: String(row.mime_type),
+    size: Number(row.size),
+    iv: String(row.iv),
+    salt: String(row.salt),
+    s3_key: String(row.s3_key),
+    expires_at: row.expires_at === null || row.expires_at === undefined ? null : String(row.expires_at),
+    max_downloads: row.max_downloads === null || row.max_downloads === undefined ? null : Number(row.max_downloads),
+    download_count: Number(row.download_count ?? 0),
+    created_at: String(row.created_at),
+  };
 }
 
-export function getFileById(id: string): FileRecord | undefined {
-  const stmt = db.prepare('SELECT * FROM files WHERE id = ?');
-  return stmt.get(id) as unknown as FileRecord | undefined;
+export async function createFile(record: Omit<FileRecord, 'download_count' | 'created_at'>): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO files (id, original_name, mime_type, size, iv, salt, s3_key, expires_at, max_downloads)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      record.id,
+      record.original_name,
+      record.mime_type,
+      record.size,
+      record.iv,
+      record.salt,
+      record.s3_key,
+      record.expires_at,
+      record.max_downloads,
+    ],
+  });
 }
 
-export function incrementDownloadCount(id: string): void {
-  const stmt = db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?');
-  stmt.run(id);
+export async function getFileById(id: string): Promise<FileRecord | undefined> {
+  const result = await db.execute({ sql: 'SELECT * FROM files WHERE id = ?', args: [id] });
+  return result.rows.length ? toRecord(result.rows[0]) : undefined;
 }
 
 /**
  * Atomically claim one download slot. Returns false if the file has already
  * reached its download limit (prevents the burn-after-reading race).
  */
-export function claimDownload(id: string): boolean {
-  const stmt = db.prepare(
-    'UPDATE files SET download_count = download_count + 1 WHERE id = ? AND (max_downloads IS NULL OR download_count < max_downloads)'
+export async function claimDownload(id: string): Promise<boolean> {
+  const result = await db.execute({
+    sql: 'UPDATE files SET download_count = download_count + 1 WHERE id = ? AND (max_downloads IS NULL OR download_count < max_downloads)',
+    args: [id],
+  });
+  return result.rowsAffected > 0;
+}
+
+export async function releaseDownload(id: string): Promise<void> {
+  await db.execute({
+    sql: 'UPDATE files SET download_count = download_count - 1 WHERE id = ? AND download_count > 0',
+    args: [id],
+  });
+}
+
+export async function getExpiredFiles(): Promise<FileRecord[]> {
+  const result = await db.execute(
+    "SELECT * FROM files WHERE expires_at IS NOT NULL AND expires_at < datetime('now')"
   );
-  const result = stmt.run(id) as unknown as { changes: number | bigint };
-  return Number(result.changes) > 0;
+  return result.rows.map(toRecord);
 }
 
-export function releaseDownload(id: string): void {
-  const stmt = db.prepare('UPDATE files SET download_count = download_count - 1 WHERE id = ? AND download_count > 0');
-  stmt.run(id);
+export async function getMaxedOutFiles(): Promise<FileRecord[]> {
+  const result = await db.execute(
+    'SELECT * FROM files WHERE max_downloads IS NOT NULL AND download_count >= max_downloads'
+  );
+  return result.rows.map(toRecord);
 }
 
-export function getExpiredFiles(): FileRecord[] {
-  const stmt = db.prepare("SELECT * FROM files WHERE expires_at IS NOT NULL AND expires_at < datetime('now')");
-  return stmt.all() as unknown as FileRecord[];
-}
-
-export function getMaxedOutFiles(): FileRecord[] {
-  const stmt = db.prepare('SELECT * FROM files WHERE max_downloads IS NOT NULL AND download_count >= max_downloads');
-  return stmt.all() as unknown as FileRecord[];
-}
-
-export function deleteFileRecord(id: string): void {
-  const stmt = db.prepare('DELETE FROM files WHERE id = ?');
-  stmt.run(id);
+export async function deleteFileRecord(id: string): Promise<void> {
+  await db.execute({ sql: 'DELETE FROM files WHERE id = ?', args: [id] });
 }
