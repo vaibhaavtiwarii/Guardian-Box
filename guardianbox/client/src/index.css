@@ -1,28 +1,69 @@
 @import "tailwindcss";
 
-:root {
-  --gb-bg: #0a0a0f;
-  --gb-surface: #12121a;
-  --gb-surface-hover: #1a1a2e;
-  --gb-border: #2a2a3e;
-  --gb-primary: #6366f1;
-  --gb-primary-hover: #818cf8;
-  --gb-accent: #22d3ee;
-  --gb-text: #e2e8f0;
-  --gb-text-muted: #94a3b8;
-  --gb-danger: #ef4444;
-  --gb-success: #22c55e;
+/* Design tokens. "key" (gold) is reserved for the decryption key, everywhere it appears. */
+@theme {
+  --color-ink: #0e1621;
+  --color-panel: #152030;
+  --color-raised: #1c2b3f;
+  --color-line: #28394f;
+  --color-paper: #e8eef6;
+  --color-steel: #93a5ba;
+  --color-key: #f2c14e;
+  --color-ok: #5fd39a;
+  --color-alert: #f0766e;
+  --color-focus: #8ab4ff;
+
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-ink);
+    color: var(--color-paper);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-key) 35%, transparent);
+  }
 }
 
-body {
-  background-color: var(--gb-bg);
-  color: var(--gb-text);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  min-height: 100vh;
+/* The one moment of motion: the key briefly lights up when the link appears. */
+@keyframes key-seal {
+  from {
+    background-color: color-mix(in oklab, var(--color-key) 38%, transparent);
+  }
+  to {
+    background-color: color-mix(in oklab, var(--color-key) 10%, transparent);
+  }
+}
+
+.key-seal {
+  animation: key-seal 1400ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .key-seal {
+    animation: none;
+    background-color: color-mix(in oklab, var(--color-key) 10%, transparent);
+  }
+  .animate-spin {
+    animation-duration: 3s;
+  }
+  * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
