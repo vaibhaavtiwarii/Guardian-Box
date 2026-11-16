@@ -2,7 +2,7 @@
 
 > **The server is blind.** Your files are encrypted in the browser before they ever leave your device. The server stores only unreadable ciphertext. Not even we can see what you share.
 
-**🌐 Live demo: [guardianbox-w5gu.onrender.com](https://guardianbox-w5gu.onrender.com)** _(free hosting — the first load after idle can take about a minute)_
+**🌐 Live demo: [guardianbox-w5gu.onrender.com](https://guardianbox-w5gu.onrender.com)** _(free hosting — if the app has been idle, the first load can take about a minute)_
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
@@ -29,10 +29,12 @@ GuardianBox is an **End-to-End Encrypted (E2EE)** file sharing service designed 
   <host>/file/abc#MyKey               Database: metadata only (no keys)
 ```
 
-1. **Upload**: User selects a file → enters (or auto-generates) a password → file is encrypted with **AES-256-GCM** in the browser → encrypted blob is sent to the server
-2. **Share**: A link is generated containing the file ID in the path and the decryption key in the **URL hash** (`#`). The hash fragment is **never sent to the server** by the browser.
-3. **Download**: Recipient opens the link → browser extracts the key from the hash → fetches the encrypted blob from the server → decrypts it client-side → downloads the original file
-4. **Expire**: Files are deleted automatically after a set time (hourly cron job) or after N downloads (burn after reading).
+1. **Upload**: the user selects a file → enters (or generates) a key → the file is encrypted with **AES-256-GCM** in the browser → only the encrypted blob is sent to the server.
+2. **Share**: a link is generated with the file ID in the path and the decryption key in the **URL hash** (`#`). Browsers never send the hash fragment to the server.
+3. **Download**: the recipient opens the link → the browser reads the key from the hash → fetches the encrypted blob → decrypts it client-side → saves the original file.
+4. **Expire**: files are deleted automatically after a chosen time (**hourly cron job**) or after N downloads (**burn after reading**).
+
+**Options in the UI:** expiry of 1 hour, 6 hours, 24 hours, 7 days or never; download limit of 1, 5, 10 or unlimited (the API accepts any positive number).
 
 ---
 
@@ -45,17 +47,18 @@ GuardianBox is an **End-to-End Encrypted (E2EE)** file sharing service designed 
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4 |
 | Backend | Node.js, Express 4, TypeScript |
 | Database | libSQL / SQLite via `@libsql/client` — a local file in development, hosted [Turso](https://turso.tech) in production. Metadata only. |
-| Object Storage | AWS S3 or any S3-compatible store (developed against RustFS; MinIO also works) via `@aws-sdk/client-s3` |
+| Object storage | Any S3-compatible store via `@aws-sdk/client-s3` — RustFS locally, [Tigris](https://www.tigrisdata.com) in production (AWS S3 and MinIO also work) |
 | Cryptography | Web Crypto API (AES-256-GCM, PBKDF2-SHA-256) |
+| Scheduling | `node-cron` (hourly cleanup) |
 
 ### Cryptography Details
 
 - **Algorithm**: AES-256-GCM (authenticated encryption — tampering is detected)
-- **Key Derivation**: PBKDF2 with 600,000 iterations and SHA-256
+- **Key derivation**: PBKDF2 with 600,000 iterations and SHA-256
 - **IV**: 12-byte random Initialization Vector per encryption
 - **Salt**: 16-byte random salt per encryption for key derivation
-- **Key Transport**: Via URL hash fragment (`#`), which browsers never include in HTTP requests
-- **Module**: all crypto lives in one place — `guardianbox/client/src/utils/cryptoUtils.ts` (a plain-JS twin, `cryptoUtils.js`, is used by the proof script and the Node tests)
+- **Key transport**: URL hash fragment (`#`), which browsers never include in HTTP requests. Keys are percent-encoded in the link, so passphrases with spaces or non-English characters survive the round trip.
+- **Module**: all crypto lives in `guardianbox/client/src/utils/cryptoUtils.ts`. A plain-JS twin, `cryptoUtils.js`, is used by the proof script and the Node tests.
 
 ### API
 
@@ -66,6 +69,8 @@ GuardianBox is an **End-to-End Encrypted (E2EE)** file sharing service designed 
 | `GET` | `/api/files/:id` | Download the encrypted blob (counts toward the download limit) |
 | `GET` | `/api/health` | Health check |
 
+Expired or used-up files return `410 Gone`; unknown IDs return `404`.
+
 ---
 
 ## 🚀 Getting Started
@@ -74,7 +79,7 @@ GuardianBox is an **End-to-End Encrypted (E2EE)** file sharing service designed 
 
 - Node.js **20+**
 - npm
-- Docker (for a local S3-compatible store) **or** an AWS S3 bucket
+- Docker (for a local S3-compatible store) **or** an S3 bucket
 
 ### Setup
 
@@ -86,12 +91,8 @@ cd Guardian-Box/guardianbox
 # Environment variables
 cp .env.example server/.env
 
-# Install dependencies
-cd client
-npm install
-cd ../server
-npm install
-cd ..
+# Install dependencies for the client and the server
+npm run install:all
 ```
 
 **Start a local S3-compatible store (RustFS):**
@@ -106,7 +107,7 @@ docker run -d --name rustfs \
   rustfs/rustfs:1.0.0
 ```
 
-The console is at <http://127.0.0.1:9001/rustfs/console/> (login `minioadmin` / `minioadmin`). The server creates the `guardianbox-uploads` bucket automatically on first start. To use AWS S3 or another provider instead, change the `S3_*` variables in `server/.env`.
+The console is at <http://127.0.0.1:9001/rustfs/console/> (login `minioadmin` / `minioadmin`). The server creates the `guardianbox-uploads` bucket automatically on first start. To use another provider, change the `S3_*` variables in `server/.env`.
 
 **Run the app (two terminals):**
 
@@ -128,16 +129,16 @@ Open <http://localhost:5173>.
 |----------|---------|---------|
 | `PORT` | `3001` | API port |
 | `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` | *(empty)* | Hosted libSQL database. Leave empty locally to use a SQLite file (`server/data/guardianbox.db`) |
-| `S3_FORCE_PATH_STYLE` | `true` | `true` for local RustFS/MinIO, `false` for hosted providers like Tigris |
-| `TRUST_PROXY` | *(empty)* | Set to `1` behind a reverse proxy (Render) so rate limiting sees real client IPs |
 | `S3_ENDPOINT` | `http://localhost:9000` | S3-compatible endpoint |
 | `S3_BUCKET` | `guardianbox-uploads` | Bucket name |
 | `S3_REGION` | `us-east-1` | Region |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | `minioadmin` | Storage credentials (change in production) |
+| `S3_FORCE_PATH_STYLE` | `true` | `true` for local RustFS/MinIO, `false` for hosted providers like Tigris |
 | `S3_STRICT` | `false` | `true` = never fall back to local disk; the server refuses to start if the bucket is unreachable |
 | `MAX_UPLOAD_MB` | `50` | Maximum encrypted upload size |
+| `TRUST_PROXY` | *(empty)* | Set to `1` behind a reverse proxy (Render) so rate limiting sees real client IPs |
 | `CORS_ORIGIN` | *(any)* | Comma-separated allowed origins in production |
-| `RATE_LIMIT_PER_MIN` | `120` | Per-IP request limit |
+| `RATE_LIMIT_PER_MIN` | `120` | Per-IP request limit on `/api` |
 
 > If S3 is unreachable and `S3_STRICT` is not `true`, the server falls back to local disk (`server/storage/`) for convenience during development.
 
@@ -149,18 +150,18 @@ The app deploys as **one web service** that serves both the API and the built Re
 
 | Piece | Service | Role |
 |-------|---------|------|
-| Web service | [Render](https://render.com) free web service | Runs Express and serves the built UI (HTTPS is required for the Web Crypto API and is provided automatically) |
+| Web service | [Render](https://render.com) free web service | Runs Express and serves the built UI (HTTPS, which the Web Crypto API requires, is automatic) |
 | Metadata DB | [Turso](https://turso.tech) | File records (no keys, no plaintext) — needed because Render's free filesystem is ephemeral |
 | Encrypted blobs | [Tigris](https://www.tigrisdata.com) | S3-compatible object storage |
+| Uptime monitor | [UptimeRobot](https://uptimerobot.com) | Pings `/api/health` every 5 minutes so the free instance stays awake |
 
 **Steps**
 1. Create a private Tigris bucket and an access key limited to it. Create a Turso database and an auth token.
 2. In Render choose **New → Blueprint**, select this repository (it reads [`render.yaml`](render.yaml)) and enter the secret values when prompted: `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`.
 3. Every push to `main` redeploys automatically.
+4. In UptimeRobot add an **HTTP(s)** monitor for `https://<your-service>.onrender.com/api/health` with a 5-minute interval.
 
-**Free-tier behaviour:** Render spins the service down after 15 minutes without traffic, so the first request afterwards takes about a minute. The hourly cleanup job cannot run while it sleeps, so cleanup also runs on every start-up, and expiry / download limits are enforced on every request regardless.
-
-**Live demo:** <https://guardianbox-w5gu.onrender.com> — hosted on Render's free tier, so if the app has been idle the first load can take up to a minute while it wakes up.
+**Free-tier behaviour:** Render spins a free service down after 15 minutes without traffic, and the first request afterwards takes about a minute. The UptimeRobot ping keeps it awake, but a short 502 right after a redeploy is normal. The hourly cleanup job cannot run while the service sleeps, so cleanup also runs on every start-up, and expiry and download limits are enforced on every request regardless.
 
 ---
 
@@ -168,53 +169,56 @@ The app deploys as **one web service** that serves both the API and the built Re
 
 ### What's Protected
 
-| Attack Vector | Mitigation |
+| Attack vector | Mitigation |
 |--------------|------------|
-| Server compromise | Zero-knowledge: server stores only ciphertext. No keys in DB. |
-| Database leak | Only encrypted blob references and metadata. No plaintext, no keys. |
-| Man-in-the-middle | HTTPS in production. Key is in URL hash, never in HTTP requests. |
-| Brute force (key) | AES-256-GCM with PBKDF2 (600K iterations). Computationally infeasible for a strong key. |
+| Server compromise | Zero-knowledge: the server stores only ciphertext. No keys in the DB. |
+| Database leak | Only encrypted-blob references and metadata. No plaintext, no keys. |
+| Man-in-the-middle | HTTPS in production. The key is in the URL hash and never appears in HTTP requests. |
+| Brute force (key) | AES-256-GCM with PBKDF2 (600K iterations). Infeasible for a strong key. |
 | IV reuse | Fresh random 12-byte IV per encryption. |
 | Tampering | AES-GCM authentication tag — modified ciphertext fails to decrypt. |
-| Replay attacks | Unique file IDs, optional download limits, auto-expiration. |
-| Burn-after-read race | Download slot claimed with an atomic SQL `UPDATE ... WHERE download_count < max_downloads`. |
+| Reuse of a leaked link | Optional download limit and auto-expiry; expired files are deleted from storage. |
+| Burn-after-read race | The download slot is claimed with an atomic SQL `UPDATE ... WHERE download_count < max_downloads`. |
 | Abuse / scraping | Per-IP rate limit, restrictable CORS, `no-store` and `Referrer-Policy: no-referrer` headers. |
-| Input abuse | File IDs validated as UUIDs; `iv`/`salt` validated as base64; upload size capped. |
+| Script injection | Content-Security-Policy on the UI (scripts only from the same origin) and a strict `default-src 'none'` policy on `/api`. |
+| Input abuse | File IDs validated as UUIDs; `iv` and `salt` validated as base64; upload size capped. |
 
 ### Known Limitations & Risks
 
-1. **Link Loss = Data Loss**: If the user loses the sharing link (which contains the decryption key), the file is **irrecoverable**. There is no "forgot password" flow — that would require the server to know the key, defeating zero-knowledge.
+1. **Link loss = data loss**: if the user loses the sharing link (which contains the decryption key), the file is **irrecoverable**. There is no "forgot password" flow — that would require the server to know the key, defeating zero-knowledge.
 
-2. **Browser Trust**: The user must trust their browser and the JavaScript served. A compromised CDN or an XSS attack could exfiltrate the key. Mitigation: Subresource Integrity (SRI) and a strict Content-Security-Policy on the host that serves the frontend (the API already sends a restrictive CSP).
+2. **Browser and host trust**: the user must trust the JavaScript the host serves. A compromised host or an XSS flaw could exfiltrate the key. Mitigation: a strict CSP is set, and the app has no third-party scripts. Further hardening would be Subresource Integrity or a signed, self-hosted build. Fonts load from Google Fonts; that request never includes the URL fragment.
 
-3. **Metadata Exposure**: The server knows file sizes, upload times, and IP addresses. The file *contents* are hidden, but traffic patterns are not.
+3. **Metadata exposure**: the server knows file sizes, upload times, and IP addresses. File *contents* are hidden, but traffic patterns are not.
 
-4. **URL Sharing Security**: If the link is shared over an insecure channel (e.g., plain HTTP, unencrypted email), the key could be intercepted. Users should share links via E2EE messaging (Signal, WhatsApp).
+4. **Insecure link sharing**: if the link is sent over an insecure channel (plain HTTP, unencrypted email), the key could be intercepted. Share links through an E2EE messenger (Signal, WhatsApp).
 
-5. **Large files are buffered, not streamed**: the whole file is encrypted in one AES-GCM operation and buffered in server memory, so uploads are capped (default 50 MB, `MAX_UPLOAD_MB`). True streaming would need chunked AES-GCM (per-chunk IVs) and multipart S3 uploads — listed as future work.
+5. **Large files are buffered, not streamed**: the whole file is encrypted in one AES-GCM operation and buffered in server memory, so uploads are capped (default 50 MB, `MAX_UPLOAD_MB`). True streaming would need chunked AES-GCM (per-chunk IVs) and multipart S3 uploads — future work.
 
 6. **Filename and MIME type are not encrypted**: they are stored server-side in plaintext so the recipient can see them before decrypting. Anyone with DB access learns file names, sizes and timestamps.
 
-7. **Weak user-chosen passwords**: the password is placed in the share link and also used for PBKDF2. A short password is brute-forceable by anyone who obtains the ciphertext; prefer the auto-generated key.
+7. **Weak user-chosen keys**: the key is placed in the share link and also used for PBKDF2. A short passphrase is brute-forceable by anyone who obtains the ciphertext; prefer **Generate key**.
 
-8. **No Forward Secrecy**: The same key decrypts the file forever (until the file expires). If the key is compromised at any point, all historical access is compromised.
+8. **No forward secrecy**: the same key decrypts the file until it expires. If the key is compromised at any point, access to that file is compromised.
 
-9. **Download limit counts requests, not recipients**: anyone who has the link can consume a download. Combine a download limit with a short expiry for sensitive files.
+9. **Download limit counts requests, not recipients**: anyone with the link can consume a download, and a failed decryption still uses one. Combine a download limit with a short expiry for sensitive files.
 
 ---
 
 ## 🔬 Proof of Zero-Knowledge Storage (Walkthrough)
 
-Deliverable requirement: *A walkthrough showing that the file stored in the S3 bucket is indeed encrypted and unreadable without the client-side key.*
+Deliverable requirement: *a walkthrough showing that the file stored in the S3 bucket is indeed encrypted and unreadable without the client-side key.*
 
-The proof has two parts. Both were run with `S3_STRICT=true`, so the server was talking to the real S3-compatible bucket and **not** the local-disk fallback.
+The proof has two parts.
 
-### Part 1 — Inspect the object in the bucket
+### Part 1 — Inspect the object in the bucket (live deployment)
 
-1. Upload `secret-demo.txt` through the UI (it contains the marker `WHISTLEBLOWER-EVIDENCE-2026` in plain text).
-2. Open the storage console and browse `guardianbox-uploads/uploads/`. The object has a random UUID name and no extension.
-3. Download the object and open it: it is random bytes, and the marker text appears nowhere.
-4. Decrypt through the share link: the original text comes back. With a wrong key, decryption fails.
+These steps were run against the live site at <https://guardianbox-w5gu.onrender.com>, with the object stored in the Tigris bucket.
+
+1. Upload a small text file containing a recognizable sentence through the UI.
+2. Open the Tigris dashboard and browse the bucket. The object has a random UUID name under `uploads/` and no extension.
+3. Download the object and open it in a text editor: it is random bytes, and your sentence appears nowhere.
+4. Open the share link and decrypt: the original text comes back. With a wrong key, decryption fails.
 
 | Step | Screenshot |
 |------|-----------|
@@ -224,10 +228,10 @@ The proof has two parts. Both were run with `S3_STRICT=true`, so the server was 
 | Recipient decrypts with the key from the link | ![decrypted](proof/04-decrypted-ok.png) |
 | Wrong key rejected | ![wrong key](proof/05-wrong-key-rejected.png) |
 
-Command-line check on the downloaded object (no output means the marker is not present):
+Command-line check on the downloaded object (no output means the word is not present; use a word from your own file):
 
 ```powershell
-Select-String -Path .\downloaded-object -Pattern "WHISTLEBLOWER" -Encoding ASCII
+Select-String -Path .\downloaded-object -Pattern "your-word-here" -Encoding ASCII
 ```
 
 ### Part 2 — Automated end-to-end script
@@ -237,7 +241,7 @@ Select-String -Path .\downloaded-object -Pattern "WHISTLEBLOWER" -Encoding ASCII
 npm run proof
 ```
 
-The script encrypts a message, uploads the ciphertext, checks that the database record holds no key or plaintext, decrypts with the correct key, confirms a wrong key is rejected, and tests burn-after-reading.
+The script encrypts a message, uploads the ciphertext, checks that the database record holds no key or plaintext, decrypts with the correct key, confirms a wrong key is rejected, and tests burn-after-reading. The run below was made locally with `S3_STRICT=true` against the RustFS bucket, so the server was talking to real S3-compatible storage and **not** the local-disk fallback.
 
 Actual output:
 
@@ -326,17 +330,21 @@ The tests verify that:
 ```
 Guardian-Box/
 ├── README.md
+├── LICENSE
+├── render.yaml                     # Render Blueprint (free web service)
 ├── proof/                          # Proof screenshots
 └── guardianbox/
+    ├── .env.example
     ├── client/                     # React frontend
     │   └── src/
-    │       ├── components/         # UI components
+    │       ├── components/         # Shell, drop zone, key input, limits, share link, hero art
     │       ├── pages/              # Upload and Download pages
     │       ├── utils/
     │       │   ├── cryptoUtils.ts  # 🔐 Web Crypto API module
     │       │   ├── cryptoUtils.js  # JS version of the same module
     │       │   ├── cryptoUtils.test.ts
-    │       │   └── api.ts          # API client
+    │       │   ├── api.ts          # API client
+    │       │   └── format.ts       # Sizes, dates and limit wording
     │       └── types/              # TypeScript interfaces
     ├── server/                     # Express backend
     │   └── src/
