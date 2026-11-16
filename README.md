@@ -227,6 +227,7 @@ These steps were run against the live site at <https://guardianbox-w5gu.onrender
 | Stored object opened in a text editor — unreadable | ![ciphertext](proof/03-ciphertext-unreadable.png) |
 | Recipient decrypts with the key from the link | ![decrypted](proof/04-decrypted-ok.png) |
 | Wrong key rejected | ![wrong key](proof/05-wrong-key-rejected.png) |
+| Link stops working after its download limit (burn after reading) | ![burned](proof/06-burn-after-read.png) |
 
 Command-line check on the downloaded object (no output means the word is not present; use a word from your own file):
 
