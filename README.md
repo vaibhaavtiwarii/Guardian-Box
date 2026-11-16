@@ -75,6 +75,8 @@ Upload fields: `file` (the ciphertext), `iv`, `salt`, `originalName`, `mimeType`
 
 ## 🚀 Getting Started
 
+A sample file is included at [`demo/sample-file.txt`](demo/sample-file.txt) — upload it to try the full flow.
+
 ### Prerequisites
 
 - Node.js **20+**
