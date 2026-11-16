@@ -69,7 +69,7 @@ GuardianBox is an **End-to-End Encrypted (E2EE)** file sharing service designed 
 | `GET` | `/api/files/:id` | Download the encrypted blob (counts toward the download limit) |
 | `GET` | `/api/health` | Health check |
 
-Expired or used-up files return `410 Gone`; unknown IDs return `404`.
+Upload fields: `file` (the ciphertext), `iv`, `salt`, `originalName`, `mimeType`, plus optional `expiresIn` (**seconds**) and `maxDownloads`. Expired or used-up files return `410 Gone`; unknown IDs, and files whose blob has vanished from storage, return `404`.
 
 ---
 
@@ -227,7 +227,6 @@ These steps were run against the live site at <https://guardianbox-w5gu.onrender
 | Stored object opened in a text editor — unreadable | ![ciphertext](proof/03-ciphertext-unreadable.png) |
 | Recipient decrypts with the key from the link | ![decrypted](proof/04-decrypted-ok.png) |
 | Wrong key rejected | ![wrong key](proof/05-wrong-key-rejected.png) |
-| Link stops working after its download limit (burn after reading) | ![burned](proof/06-burn-after-read.png) |
 
 Command-line check on the downloaded object (no output means the word is not present; use a word from your own file):
 
@@ -309,7 +308,8 @@ Actual output:
 ## 🧪 Testing
 
 ```bash
-# Node test runner (from guardianbox/)
+# Server + crypto tests (from guardianbox/) — build the server first
+npm run build:server
 npm test
 
 # Vitest suite for the client crypto module
@@ -317,12 +317,21 @@ cd client
 npm test
 ```
 
-The tests verify that:
+**Crypto tests** (`tests/crypto.test.mjs`, client `cryptoUtils`):
 - `encrypt(data, key)` followed by `decrypt(ciphertext, key)` returns the original data (text and 64 KB of binary)
 - a wrong password fails to decrypt (authentication tag failure)
 - tampered ciphertext is rejected (AES-GCM integrity)
 - a fresh salt and IV are generated on every call
 - generated keys are unique and base64 encoding round-trips
+
+**Server tests** (`tests/server.test.mjs`) start the built server on a random port with a temporary database and local blob storage, then call the real API:
+- upload stores a blob; download returns the same bytes with the `iv` and `salt` headers
+- `expiresIn` is read as seconds, and an expired file returns `410` on both the info and download endpoints
+- **burn after reading**: the last allowed download deletes the file, and the blob is removed from storage
+- eight parallel downloads of a one-download file let exactly one succeed (atomic claim)
+- unknown or malformed IDs return `404`; missing or invalid `iv` / `salt` return `400`
+- a blob deleted from storage turns the link into a `404` and removes the record
+- the file-info response never contains a key or plaintext
 
 ---
 
@@ -357,7 +366,7 @@ Guardian-Box/
     │       ├── services/           # Object storage service
     │       └── utils/              # Hourly cleanup cron job
     ├── scripts/e2e-proof.mjs       # End-to-end proof script
-    └── tests/crypto.test.mjs       # Node crypto tests
+    └── tests/                      # crypto.test.mjs, server.test.mjs
 ```
 
 ---

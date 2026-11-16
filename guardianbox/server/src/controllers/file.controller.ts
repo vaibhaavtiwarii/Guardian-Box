@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { putEncryptedBlob, getEncryptedBlob, deleteEncryptedBlob } from '../services/storage.service';
+import { putEncryptedBlob, getEncryptedBlob, deleteEncryptedBlob, ObjectNotFoundError } from '../services/storage.service';
 import {
   createFile,
   getFileById,
@@ -34,12 +34,12 @@ export async function uploadFile(req: Request, res: Response): Promise<void> {
     const id = uuidv4();
     const s3Key = `uploads/${id}`;
 
-    // Calculate expiration time
+    // Calculate expiration time. `expiresIn` is a number of SECONDS.
     let expiresAt: string | null = null;
     if (expiresIn) {
-      const minutes = parseInt(expiresIn, 10);
-      if (!isNaN(minutes) && minutes > 0) {
-        const expDate = new Date(Date.now() + minutes * 60 * 1000);
+      const seconds = parseInt(expiresIn, 10);
+      if (!isNaN(seconds) && seconds > 0) {
+        const expDate = new Date(Date.now() + seconds * 1000);
         expiresAt = expDate.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
       }
     }
@@ -115,7 +115,13 @@ export async function downloadFile(req: Request, res: Response): Promise<void> {
     let buffer: Buffer;
     try {
       buffer = await getEncryptedBlob(record.s3_key);
-    } catch (err) {
+    } catch (err: any) {
+      // The blob is gone from storage (deleted outside the app): the link can never work again.
+      if (err instanceof ObjectNotFoundError) {
+        await deleteFileRecord(id);
+        res.status(404).json({ error: 'File not found' });
+        return;
+      }
       await releaseDownload(id); // don't burn a download if the blob could not be read
       throw err;
     }

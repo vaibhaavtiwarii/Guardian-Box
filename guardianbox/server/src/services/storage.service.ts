@@ -18,6 +18,12 @@ let useLocalFallback = process.env.STORAGE_MODE === 'local';
 // "proof the blob in S3 is encrypted" walkthrough and for production).
 const S3_STRICT = process.env.S3_STRICT === 'true';
 
+export class ObjectNotFoundError extends Error {
+  constructor() {
+    super('Object not found in storage');
+  }
+}
+
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream) {
@@ -112,7 +118,7 @@ export async function getEncryptedBlob(key: string): Promise<Buffer> {
       return await streamToBuffer(response.Body as Readable);
     } catch (err: any) {
       if (err?.name === 'NoSuchKey') {
-        throw new Error('Object not found in storage');
+        throw new ObjectNotFoundError();
       }
       if (S3_STRICT) throw err;
       console.warn(`[Storage] S3 read failed, trying local storage:`, err);
@@ -121,7 +127,7 @@ export async function getEncryptedBlob(key: string): Promise<Buffer> {
 
   const filePath = path.join(LOCAL_STORAGE_DIR, key);
   if (!fs.existsSync(filePath)) {
-    throw new Error('Object not found in storage');
+    throw new ObjectNotFoundError();
   }
   return await fs.promises.readFile(filePath);
 }

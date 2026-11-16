@@ -21,6 +21,9 @@ export async function uploadEncryptedFile(
   return res.json();
 }
 
+/** The link is dead for good (expired, used up or deleted); retrying cannot help. */
+export class LinkGoneError extends Error {}
+
 export async function downloadEncryptedFile(id: string): Promise<{
   blob: Blob;
   iv: string;
@@ -29,8 +32,8 @@ export async function downloadEncryptedFile(id: string): Promise<{
   mimeType: string;
 }> {
   const res = await fetch(`/api/files/${id}`);
-  if (res.status === 410) throw new Error('This file has expired or reached its download limit.');
-  if (res.status === 404) throw new Error('File not found.');
+  if (res.status === 410) throw new LinkGoneError('This file has expired or reached its download limit.');
+  if (res.status === 404) throw new LinkGoneError('File not found.');
   if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
   
   const blob = await res.blob();

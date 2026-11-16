@@ -5,7 +5,7 @@ import VaultCoin from '../components/VaultCoin';
 import PasswordInput from '../components/PasswordInput';
 import { IconAlert, IconCheck, IconFile, IconKey, IconSpinner, IconUnlock } from '../components/icons';
 import { decryptFile } from '../utils/cryptoUtils';
-import { downloadEncryptedFile, getFileInfo } from '../utils/api';
+import { downloadEncryptedFile, getFileInfo, LinkGoneError } from '../utils/api';
 import { formatDateTime, formatFileSize, formatTimeLeft } from '../utils/format';
 import type { FileInfo } from '../types';
 
@@ -86,6 +86,11 @@ export default function DownloadPage() {
 
       setDownloadState('complete');
     } catch (err) {
+      if (err instanceof LinkGoneError) {
+        // Expired, used up or deleted while this page was open: show the dead-link screen.
+        setInfoError(err.message);
+        return;
+      }
       setDownloadState('error');
       if (err instanceof DOMException && err.name === 'OperationError') {
         setErrorMsg(

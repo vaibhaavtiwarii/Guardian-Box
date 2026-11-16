@@ -9,7 +9,7 @@
     "build:client": "cd client && npm run build",
     "build:server": "cd server && npm run build",
     "install:all": "cd client && npm install --include=dev && cd ../server && npm install --include=dev",
-    "test": "node --test tests/crypto.test.mjs",
+    "test": "node --test --test-force-exit --test-timeout=60000 tests/crypto.test.mjs tests/server.test.mjs",
     "test:client": "cd client && npm test",
     "proof": "node scripts/e2e-proof.mjs",
     "build": "npm run build:client && npm run build:server",
