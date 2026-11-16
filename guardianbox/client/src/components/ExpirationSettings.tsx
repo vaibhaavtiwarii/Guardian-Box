@@ -19,7 +19,7 @@ function ChipGroup({ legend, options, value, onChange }: ChipGroupProps) {
   const name = useId();
   return (
     <fieldset>
-      <legend className="text-sm font-medium">{legend}</legend>
+      <legend className="text-sm font-medium text-steel">{legend}</legend>
       <div className="mt-2 flex flex-wrap gap-2">
         {options.map((opt) => (
           <label key={opt.label} className="cursor-pointer">
@@ -30,7 +30,7 @@ function ChipGroup({ legend, options, value, onChange }: ChipGroupProps) {
               checked={opt.value === value}
               onChange={() => onChange(opt.value)}
             />
-            <span className="flex min-h-11 items-center rounded-lg border border-line bg-ink px-4 text-sm transition-colors hover:border-steel peer-checked:border-paper peer-checked:bg-paper peer-checked:font-medium peer-checked:text-ink peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus">
+            <span className="flex min-h-11 items-center rounded-full border border-line bg-ink px-5 text-sm transition-colors hover:border-steel peer-checked:border-safe peer-checked:bg-safe peer-checked:font-semibold peer-checked:text-ink peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus">
               {opt.label}
             </span>
           </label>

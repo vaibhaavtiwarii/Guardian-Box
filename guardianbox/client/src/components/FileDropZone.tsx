@@ -41,12 +41,12 @@ export default function FileDropZone({ onFileSelected, selectedFile }: FileDropZ
         }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
-        className={`flex cursor-pointer items-center gap-4 rounded-xl border border-dashed px-5 py-7 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus sm:py-9 ${
+        className={`flex cursor-pointer items-center gap-4 rounded-3xl border border-dashed px-5 py-8 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus sm:py-12 ${
           isDragOver
-            ? 'border-paper bg-raised'
+            ? 'border-safe bg-raised'
             : selectedFile
-              ? 'border-steel/60 bg-ink/40 hover:bg-ink/70'
-              : 'border-line bg-ink/40 hover:border-steel hover:bg-ink/70'
+              ? 'border-safe/60 bg-ink/60 hover:bg-ink'
+              : 'border-line bg-ink/60 hover:border-steel hover:bg-ink'
         }`}
       >
         <input
@@ -59,8 +59,8 @@ export default function FileDropZone({ onFileSelected, selectedFile }: FileDropZ
           }}
         />
         <span
-          className={`flex size-12 shrink-0 items-center justify-center rounded-lg ${
-            selectedFile ? 'bg-paper text-ink' : 'bg-raised text-paper'
+          className={`flex size-14 shrink-0 items-center justify-center rounded-full ${
+            selectedFile ? 'bg-safe text-ink' : 'bg-raised text-paper'
           }`}
         >
           {selectedFile ? <IconFile /> : <IconUpload />}

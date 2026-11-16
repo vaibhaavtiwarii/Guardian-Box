@@ -1,25 +1,29 @@
 @import "tailwindcss";
 
-/* Design tokens. "key" (gold) is reserved for the decryption key, everywhere it appears. */
+/* Design tokens. "key" (amber) is reserved for the decryption key, everywhere it appears.
+   "safe" (lime) marks what is encrypted, selected or done. */
 @theme {
-  --color-ink: #0e1621;
-  --color-panel: #152030;
-  --color-raised: #1c2b3f;
-  --color-line: #28394f;
-  --color-paper: #e8eef6;
-  --color-steel: #93a5ba;
-  --color-key: #f2c14e;
-  --color-ok: #5fd39a;
-  --color-alert: #f0766e;
-  --color-focus: #8ab4ff;
+  --color-ink: #050505;
+  --color-panel: #121212;
+  --color-raised: #1b1b1b;
+  --color-line: #2a2a2a;
+  --color-paper: #f4f4f1;
+  --color-steel: #9a9a96;
+  --color-key: #ffa41b;
+  --color-ok: #c8f751;
+  --color-safe: #c8f751;
+  --color-alert: #ff6b6b;
+  --color-focus: #ffffff;
 
-  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 }
 
 @layer base {
   html {
     color-scheme: dark;
+    scroll-behavior: smooth;
+    scroll-padding-top: 6rem;
   }
 
   body {
@@ -28,6 +32,7 @@
     font-family: var(--font-sans);
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
 
   :focus-visible {
@@ -36,34 +41,41 @@
   }
 
   ::selection {
-    background: color-mix(in oklab, var(--color-key) 35%, transparent);
+    background: color-mix(in oklab, var(--color-key) 40%, transparent);
   }
 }
 
-/* The one moment of motion: the key briefly lights up when the link appears. */
+/* Soft amber light and a dot grid behind the page, like the glow around the coins. */
+.ambient {
+  background:
+    radial-gradient(60rem 36rem at 78% -4%, rgb(255 140 20 / 0.20), transparent 62%),
+    radial-gradient(40rem 26rem at 4% 38%, rgb(200 247 81 / 0.05), transparent 65%);
+}
+.dots {
+  background-image: radial-gradient(rgb(255 255 255 / 0.11) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse 70% 60% at 70% 20%, #000, transparent 75%);
+}
+
+/* The one moment of motion: the key lights up when the link appears. */
 @keyframes key-seal {
-  from {
-    background-color: color-mix(in oklab, var(--color-key) 38%, transparent);
-  }
-  to {
-    background-color: color-mix(in oklab, var(--color-key) 10%, transparent);
-  }
+  from { background-color: color-mix(in oklab, var(--color-key) 45%, transparent); }
+  to { background-color: color-mix(in oklab, var(--color-key) 12%, transparent); }
 }
+.key-seal { animation: key-seal 1400ms ease-out both; }
 
-.key-seal {
-  animation: key-seal 1400ms ease-out both;
+/* Coins hover slowly, each on its own beat. */
+@keyframes float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -14px; }
 }
+.coin { animation: float 7s ease-in-out infinite; }
+.coin-b { animation-duration: 9s; animation-delay: -3s; }
+.coin-c { animation-duration: 8s; animation-delay: -5s; }
 
 @media (prefers-reduced-motion: reduce) {
-  .key-seal {
-    animation: none;
-    background-color: color-mix(in oklab, var(--color-key) 10%, transparent);
-  }
-  .animate-spin {
-    animation-duration: 3s;
-  }
-  * {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-  }
+  .key-seal { animation: none; background-color: color-mix(in oklab, var(--color-key) 12%, transparent); }
+  .coin { animation: none; }
+  .animate-spin { animation-duration: 3s; }
+  * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }

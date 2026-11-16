@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Shell from '../components/Shell';
+import VaultCoin from '../components/VaultCoin';
 import PasswordInput from '../components/PasswordInput';
 import { IconAlert, IconCheck, IconFile, IconKey, IconSpinner, IconUnlock } from '../components/icons';
 import { decryptFile } from '../utils/cryptoUtils';
@@ -102,13 +103,14 @@ export default function DownloadPage() {
   if (infoError) {
     return (
       <Shell>
+       <div className="rounded-[28px] border border-white/10 bg-panel p-6 sm:p-10">
         <div className="flex items-center gap-3 text-alert">
           <span className="flex size-9 items-center justify-center rounded-full bg-alert/15">
             <IconAlert />
           </span>
           <span className="font-medium">{infoError.replace(/\.$/, '')}</span>
         </div>
-        <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
+        <h1 className="mt-5 text-4xl font-bold leading-none tracking-tight sm:text-6xl">
           This link no longer works
         </h1>
         <p className="mt-3 max-w-xl text-steel">
@@ -116,10 +118,11 @@ export default function DownloadPage() {
         </p>
         <Link
           to="/"
-          className="mt-8 inline-flex h-12 items-center rounded-lg bg-paper px-5 font-semibold text-ink hover:bg-white"
+          className="mt-8 inline-flex h-14 items-center rounded-full bg-paper px-8 font-semibold text-ink hover:bg-white"
         >
           Share a file of your own
         </Link>
+       </div>
       </Shell>
     );
   }
@@ -129,19 +132,30 @@ export default function DownloadPage() {
 
   return (
     <Shell>
-      <h1 className="max-w-2xl text-3xl font-semibold leading-tight tracking-tight sm:text-5xl sm:leading-[1.1]">
-        Someone shared a file with you
-      </h1>
-      <p className="mt-4 max-w-xl text-lg text-steel">
-        Your browser unlocks it here. The key stays on this device.
-      </p>
+      <div className="grid items-center gap-6 sm:grid-cols-[1fr_auto]">
+        <div>
+          <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-sm">
+            <span className="size-2 rounded-full bg-key" aria-hidden="true" />
+            Encrypted file
+          </p>
+          <h1 className="mt-5 text-4xl font-bold leading-[0.98] tracking-tight sm:text-6xl">
+            Someone shared a file with you
+          </h1>
+          <p className="mt-4 max-w-xl text-lg text-steel">
+            Your browser unlocks it here. The key stays on this device.
+          </p>
+        </div>
+        <div className="coin hidden w-44 [transform:perspective(900px)_rotateY(-22deg)_rotateX(10deg)] sm:block lg:w-52">
+          <VaultCoin glyph="lock" className="w-full drop-shadow-[0_0_34px_rgb(255_130_10/0.35)]" />
+        </div>
+      </div>
 
-      <div className="mt-10 divide-y divide-line rounded-2xl border border-line bg-panel">
+      <div className="mt-10 divide-y divide-white/10 rounded-[28px] border border-white/10 bg-panel">
         {/* File summary */}
-        <section className="p-5 sm:p-6" aria-label="File details" aria-busy={infoLoading}>
+        <section className="p-5 sm:p-8" aria-label="File details" aria-busy={infoLoading}>
           {infoLoading || !fileInfo ? (
             <div className="flex items-center gap-4" role="status">
-              <span className="size-12 shrink-0 animate-pulse rounded-lg bg-raised" />
+              <span className="size-14 shrink-0 animate-pulse rounded-full bg-raised" />
               <div className="flex-1 space-y-2">
                 <div className="h-4 w-2/3 animate-pulse rounded bg-raised" />
                 <div className="h-3 w-1/3 animate-pulse rounded bg-raised" />
@@ -151,7 +165,7 @@ export default function DownloadPage() {
           ) : (
             <>
               <div className="flex items-center gap-4">
-                <span className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-raised">
+                <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-raised">
                   <IconFile />
                 </span>
                 <div className="min-w-0">
@@ -189,7 +203,7 @@ export default function DownloadPage() {
         </section>
 
         {/* Key */}
-        <section className="p-5 sm:p-6" aria-label="Key">
+        <section className="p-5 sm:p-8" aria-label="Key">
           {hashKey ? (
             <p className="flex items-start gap-3 text-sm">
               <IconKey className="mt-0.5 shrink-0 text-key" />
@@ -210,14 +224,14 @@ export default function DownloadPage() {
         </section>
 
         {/* Action */}
-        <section className="p-5 sm:p-6" aria-label="Download">
+        <section className="p-5 sm:p-8" aria-label="Download">
           <p role="alert" className={errorMsg ? 'mb-4 flex items-start gap-2 text-sm text-alert' : 'sr-only'}>
             {errorMsg && <IconAlert className="mt-0.5 shrink-0" />}
             <span>{errorMsg}</span>
           </p>
 
           {downloadState === 'complete' && (
-            <p role="status" className="mb-4 flex items-start gap-2 text-sm text-ok">
+            <p role="status" className="mb-4 flex items-start gap-2 text-sm text-safe">
               <IconCheck className="mt-0.5 shrink-0" />
               <span>Unlocked on your device and saved to your downloads folder.</span>
             </p>
@@ -228,7 +242,7 @@ export default function DownloadPage() {
             onClick={handleDecryptAndDownload}
             disabled={!canDownload || infoLoading}
             aria-busy={busy}
-            className="inline-flex h-14 w-full items-center justify-center gap-2.5 rounded-lg bg-paper text-base font-semibold text-ink transition-colors enabled:hover:bg-white disabled:cursor-not-allowed disabled:bg-raised disabled:text-steel"
+            className="inline-flex h-14 w-full items-center justify-center gap-2.5 rounded-full bg-paper text-base font-semibold text-ink transition-colors enabled:hover:bg-white disabled:cursor-not-allowed disabled:bg-raised disabled:text-steel"
           >
             {downloadState === 'fetching' ? (
               <>

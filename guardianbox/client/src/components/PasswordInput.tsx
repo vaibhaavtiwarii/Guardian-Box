@@ -28,7 +28,7 @@ export default function PasswordInput({
 
   return (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium">
+      <label htmlFor={id} className="block text-sm font-medium text-steel">
         {label}
       </label>
       <div className="mt-2 flex flex-wrap gap-2">
@@ -43,14 +43,14 @@ export default function PasswordInput({
             autoCapitalize="off"
             spellCheck={false}
             aria-describedby={hint ? hintId : undefined}
-            className={`h-12 w-full rounded-lg border border-line bg-ink px-4 pr-12 font-mono text-sm placeholder:font-sans placeholder:text-steel/70 focus:border-steel ${
+            className={`h-12 w-full rounded-full border border-line bg-ink px-5 pr-12 font-mono text-sm placeholder:font-sans placeholder:text-steel/70 focus:border-steel ${
               showPassword && password ? 'text-key' : 'text-paper'
             }`}
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-1 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-md text-steel hover:text-paper"
+            className="absolute right-1 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full text-steel hover:text-paper"
             aria-label={showPassword ? 'Hide key' : 'Show key'}
             aria-pressed={showPassword}
           >
@@ -62,7 +62,7 @@ export default function PasswordInput({
           <button
             type="button"
             onClick={handleGenerateKey}
-            className="inline-flex h-12 items-center gap-2 rounded-lg border border-line bg-raised px-4 text-sm font-medium hover:border-steel"
+            className="inline-flex h-12 items-center gap-2 rounded-full border border-line bg-raised px-5 text-sm font-medium hover:border-key"
           >
             <IconKey className="text-key" />
             Generate key

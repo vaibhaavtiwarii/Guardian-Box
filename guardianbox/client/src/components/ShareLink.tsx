@@ -33,7 +33,7 @@ export default function ShareLink({ fileId, password }: ShareLinkProps) {
   return (
     <div>
       {/* The link, split into what the server sees and what stays in the browser */}
-      <div className="rounded-xl border border-line bg-ink p-4 sm:p-5">
+      <div className="rounded-3xl border border-line bg-ink p-5 sm:p-6">
         <p className="break-all font-mono text-[13px] leading-7 sm:text-sm">
           <span className="text-steel">{address}</span>
           <span className="text-steel/60">#</span>
@@ -60,7 +60,7 @@ export default function ShareLink({ fileId, password }: ShareLinkProps) {
       <button
         type="button"
         onClick={handleCopy}
-        className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-paper px-5 font-semibold text-ink hover:bg-white sm:w-auto"
+        className="mt-4 inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-paper px-8 font-semibold text-ink hover:bg-white sm:w-auto"
       >
         {copied ? <IconCheck /> : <IconCopy />}
         {copied ? 'Link copied' : 'Copy link'}
