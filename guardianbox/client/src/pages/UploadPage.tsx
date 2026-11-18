@@ -6,8 +6,8 @@ import ExpirationSettings from '../components/ExpirationSettings';
 import ShareLink from '../components/ShareLink';
 import HeroArt from '../components/HeroArt';
 import { IconAlert, IconCheck, IconLock, IconSpinner } from '../components/icons';
-import { encryptFile } from '../utils/cryptoUtils';
-import { uploadEncryptedFile } from '../utils/api';
+import ProgressBar from '../components/ProgressBar';
+import { uploadFile } from '../utils/api';
 import { describeLimits, formatFileSize } from '../utils/format';
 
 type UploadState = 'idle' | 'encrypting' | 'uploading' | 'done' | 'error';
@@ -20,6 +20,7 @@ export default function UploadPage() {
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [fileId, setFileId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const busy = uploadState === 'encrypting' || uploadState === 'uploading';
   const canUpload = !!selectedFile && password.length > 0 && !busy;
@@ -30,23 +31,19 @@ export default function UploadPage() {
     try {
       setErrorMsg(null);
 
-      // Step 1: Encrypt in the browser
+      // The file is encrypted and uploaded chunk by chunk; only ciphertext leaves the browser.
       setUploadState('encrypting');
-      const arrayBuffer = await selectedFile.arrayBuffer();
-      const { ciphertext, iv, salt } = await encryptFile(arrayBuffer, password);
-
-      // Step 2: Upload only the ciphertext
-      setUploadState('uploading');
-      const encryptedBlob = new Blob([ciphertext], { type: 'application/octet-stream' });
-      const result = await uploadEncryptedFile(
-        encryptedBlob,
-        iv,
-        salt,
-        selectedFile.name,
-        selectedFile.type || 'application/octet-stream',
+      setProgress(null);
+      const result = await uploadFile(
+        selectedFile,
+        password,
         {
           expiresIn: expiresIn ?? undefined,
           maxDownloads: maxDownloads ?? undefined,
+        },
+        (done, total) => {
+          setUploadState('uploading');
+          setProgress({ done, total });
         }
       );
 
@@ -64,6 +61,7 @@ export default function UploadPage() {
     setExpiresIn(null);
     setMaxDownloads(null);
     setUploadState('idle');
+    setProgress(null);
     setFileId(null);
     setErrorMsg(null);
   };
@@ -182,6 +180,14 @@ export default function UploadPage() {
                 <span>{errorMsg}</span>
               </p>
 
+              {busy && progress && progress.total > 1 && (
+                <ProgressBar
+                  done={progress.done}
+                  total={progress.total}
+                  label={`Encrypting and uploading part ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`}
+                />
+              )}
+
               <button
                 type="button"
                 onClick={handleEncryptAndUpload}
@@ -192,12 +198,12 @@ export default function UploadPage() {
                 {uploadState === 'encrypting' ? (
                   <>
                     <IconSpinner />
-                    Encrypting in your browser…
+                    Preparing your key…
                   </>
                 ) : uploadState === 'uploading' ? (
                   <>
                     <IconSpinner />
-                    Uploading…
+                    Encrypting and uploading…
                   </>
                 ) : (
                   <>

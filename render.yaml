@@ -17,6 +17,9 @@ services:
         value: production
       - key: TRUST_PROXY
         value: "1"
+      # Signs download tokens (random, generated once by Render)
+      - key: DOWNLOAD_TOKEN_SECRET
+        generateValue: true
       # --- Object storage (Tigris, S3-compatible) ---
       - key: S3_STRICT
         value: "true"

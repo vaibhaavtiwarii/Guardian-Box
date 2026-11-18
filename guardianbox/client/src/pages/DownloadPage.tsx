@@ -4,12 +4,12 @@ import Shell from '../components/Shell';
 import VaultCoin from '../components/VaultCoin';
 import PasswordInput from '../components/PasswordInput';
 import { IconAlert, IconCheck, IconFile, IconKey, IconSpinner, IconUnlock } from '../components/icons';
-import { decryptFile } from '../utils/cryptoUtils';
-import { downloadEncryptedFile, getFileInfo, LinkGoneError } from '../utils/api';
+import ProgressBar from '../components/ProgressBar';
+import { downloadAndDecrypt, getFileInfo, LinkGoneError } from '../utils/api';
 import { formatDateTime, formatFileSize, formatTimeLeft } from '../utils/format';
 import type { FileInfo } from '../types';
 
-type DownloadState = 'idle' | 'fetching' | 'decrypting' | 'complete' | 'error';
+type DownloadState = 'idle' | 'working' | 'complete' | 'error';
 
 /** Read the key from the URL hash. Keys are percent-encoded in the link. */
 function readHashKey(): string {
@@ -40,6 +40,7 @@ export default function DownloadPage() {
   const [downloadState, setDownloadState] = useState<DownloadState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
   const [infoError, setInfoError] = useState<string | null>(null);
   // Keep the decrypted file in memory so "Save again" doesn't use up another download.
@@ -57,7 +58,7 @@ export default function DownloadPage() {
       .finally(() => setInfoLoading(false));
   }, [id]);
 
-  const busy = downloadState === 'fetching' || downloadState === 'decrypting';
+  const busy = downloadState === 'working';
   const canDownload = password.length > 0 && !busy;
 
   const handleDecryptAndDownload = async () => {
@@ -71,18 +72,16 @@ export default function DownloadPage() {
     try {
       setErrorMsg(null);
 
-      setDownloadState('fetching');
-      const { blob, iv, salt, originalName, mimeType } = await downloadEncryptedFile(id);
-      // The server counts this fetch against the download limit, even if decryption fails.
-      setFileInfo((prev) => (prev ? { ...prev, downloadCount: prev.downloadCount + 1 } : prev));
+      setDownloadState('working');
+      setProgress(null);
+      const { blob, name } = await downloadAndDecrypt(id, password, {
+        // The server counts a claimed download against the limit, even if decryption fails.
+        onClaimed: () => setFileInfo((prev) => (prev ? { ...prev, downloadCount: prev.downloadCount + 1 } : prev)),
+        onProgress: (done, total) => setProgress({ done, total }),
+      });
 
-      setDownloadState('decrypting');
-      const encryptedBuffer = await blob.arrayBuffer();
-      const decryptedBuffer = await decryptFile(encryptedBuffer, password, iv, salt);
-
-      const decryptedBlob = new Blob([decryptedBuffer], { type: mimeType });
-      decrypted.current = { blob: decryptedBlob, name: originalName };
-      saveBlob(decryptedBlob, originalName);
+      decrypted.current = { blob, name };
+      saveBlob(blob, name);
 
       setDownloadState('complete');
     } catch (err) {
@@ -242,6 +241,14 @@ export default function DownloadPage() {
             </p>
           )}
 
+          {busy && progress && progress.total > 1 && (
+            <ProgressBar
+              done={progress.done}
+              total={progress.total}
+              label={`Downloading and decrypting part ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`}
+            />
+          )}
+
           <button
             type="button"
             onClick={handleDecryptAndDownload}
@@ -249,15 +256,10 @@ export default function DownloadPage() {
             aria-busy={busy}
             className="inline-flex h-14 w-full items-center justify-center gap-2.5 rounded-full bg-paper text-base font-semibold text-ink transition-colors enabled:hover:bg-white disabled:cursor-not-allowed disabled:bg-raised disabled:text-steel"
           >
-            {downloadState === 'fetching' ? (
+            {downloadState === 'working' ? (
               <>
                 <IconSpinner />
-                Fetching the file…
-              </>
-            ) : downloadState === 'decrypting' ? (
-              <>
-                <IconSpinner />
-                Decrypting…
+                Downloading and decrypting…
               </>
             ) : downloadState === 'complete' ? (
               <>

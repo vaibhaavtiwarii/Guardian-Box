@@ -34,6 +34,9 @@ export function formatTimeLeft(value: string): string {
   return `in ${days} days`;
 }
 
+/** Largest file the app accepts. Keep in sync with MAX_UPLOAD_MB on the server (default 500). */
+export const MAX_FILE_BYTES = 500 * 1024 * 1024;
+
 export const EXPIRY_OPTIONS: { label: string; value: number | null }[] = [
   { label: 'Never', value: null },
   { label: '1 hour', value: 3600 },

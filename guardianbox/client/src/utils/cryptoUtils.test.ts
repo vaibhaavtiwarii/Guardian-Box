@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+  CHUNK_OVERHEAD,
+  chunkCountFor,
+  decryptChunk,
+  deriveKey,
+  encryptChunk,
+  encryptedSizeFor,
   encryptFile,
   decryptFile,
   generatePassword,
@@ -17,11 +23,10 @@ describe('GuardianBox Web Crypto Engine (E2EE)', () => {
     const password = 'CorrectHorseBatteryStaple#2026';
 
     // 1. Encrypt
-    const { ciphertext, iv, salt } = await encryptFile(originalBuffer, password);
+    const { ciphertext, salt } = await encryptFile(originalBuffer, password);
 
     expect(ciphertext).toBeDefined();
     expect(ciphertext.byteLength).toBeGreaterThan(0);
-    expect(iv).toBeDefined();
     expect(salt).toBeDefined();
 
     // Verify ciphertext is distinct from original buffer
@@ -29,7 +34,7 @@ describe('GuardianBox Web Crypto Engine (E2EE)', () => {
     expect(decoder.decode(ciphertext)).not.toBe(originalText);
 
     // 2. Decrypt
-    const decryptedBuffer = await decryptFile(ciphertext, password, iv, salt);
+    const decryptedBuffer = await decryptFile(ciphertext, password, salt);
     const decryptedText = decoder.decode(decryptedBuffer);
 
     expect(decryptedText).toBe(originalText);
@@ -43,8 +48,8 @@ describe('GuardianBox Web Crypto Engine (E2EE)', () => {
     }
     const password = generatePassword(32);
 
-    const { ciphertext, iv, salt } = await encryptFile(binaryData.buffer as ArrayBuffer, password);
-    const decryptedBuffer = await decryptFile(ciphertext, password, iv, salt);
+    const { ciphertext, salt } = await encryptFile(binaryData.buffer as ArrayBuffer, password);
+    const decryptedBuffer = await decryptFile(ciphertext, password, salt);
     const decryptedBytes = new Uint8Array(decryptedBuffer);
 
     expect(decryptedBytes.length).toBe(binaryData.length);
@@ -61,10 +66,10 @@ describe('GuardianBox Web Crypto Engine (E2EE)', () => {
     const password = 'SecretPassword123';
     const wrongPassword = 'WrongPassword456';
 
-    const { ciphertext, iv, salt } = await encryptFile(originalBuffer, password);
+    const { ciphertext, salt } = await encryptFile(originalBuffer, password);
 
     await expect(
-      decryptFile(ciphertext, wrongPassword, iv, salt)
+      decryptFile(ciphertext, wrongPassword, salt)
     ).rejects.toThrow();
   });
 
@@ -73,14 +78,14 @@ describe('GuardianBox Web Crypto Engine (E2EE)', () => {
     const originalBuffer = encoder.encode('Integrity Protected Payload').buffer as ArrayBuffer;
     const password = 'SuperSecretKey';
 
-    const { ciphertext, iv, salt } = await encryptFile(originalBuffer, password);
+    const { ciphertext, salt } = await encryptFile(originalBuffer, password);
 
     // Tamper with one byte in the ciphertext
     const tampered = new Uint8Array(ciphertext);
     tampered[0] ^= 0xff;
 
     await expect(
-      decryptFile(tampered.buffer as ArrayBuffer, password, iv, salt)
+      decryptFile(tampered.buffer as ArrayBuffer, password, salt)
     ).rejects.toThrow();
   });
 
@@ -112,5 +117,51 @@ describe('GuardianBox Web Crypto Engine (E2EE)', () => {
     const restored = base64ToUint8Array(b64);
     expect(Array.from(restored)).toEqual(Array.from(bytes));
   });
-});
 
+  describe('chunked encryption', () => {
+    const makeKey = async () => deriveKey('chunk-test-key', generateSalt());
+    const bytes = (n: number, fill: number) => new Uint8Array(n).fill(fill).buffer as ArrayBuffer;
+
+    it('round-trips several chunks and adds exactly 28 bytes per chunk', async () => {
+      const key = await makeKey();
+      const parts = [bytes(1000, 1), bytes(1000, 2), bytes(10, 3)];
+      const enc = [];
+      for (let i = 0; i < parts.length; i++) enc.push(await encryptChunk(key, parts[i], i, i === parts.length - 1));
+      enc.forEach((c, i) => expect(c.byteLength).toBe(parts[i].byteLength + CHUNK_OVERHEAD));
+      for (let i = 0; i < enc.length; i++) {
+        const dec = new Uint8Array(await decryptChunk(key, enc[i], i, i === enc.length - 1));
+        expect(Array.from(dec)).toEqual(Array.from(new Uint8Array(parts[i])));
+      }
+    });
+
+    it('uses a fresh IV for every chunk, even for identical plaintext', async () => {
+      const key = await makeKey();
+      const a = await encryptChunk(key, bytes(64, 7), 0, false);
+      const b = await encryptChunk(key, bytes(64, 7), 0, false);
+      expect(Array.from(a.slice(0, 12))).not.toEqual(Array.from(b.slice(0, 12)));
+    });
+
+    it('rejects chunks that were reordered, moved or marked as final', async () => {
+      const key = await makeKey();
+      const c0 = await encryptChunk(key, bytes(100, 1), 0, false);
+      await expect(decryptChunk(key, c0, 1, false)).rejects.toThrow(); // wrong position
+      await expect(decryptChunk(key, c0, 0, true)).rejects.toThrow(); // truncation looks like "final"
+    });
+
+    it('rejects a tampered or too-short chunk', async () => {
+      const key = await makeKey();
+      const c = await encryptChunk(key, bytes(100, 1), 0, true);
+      const tampered = c.slice();
+      tampered[20] ^= 0xff;
+      await expect(decryptChunk(key, tampered, 0, true)).rejects.toThrow();
+      await expect(decryptChunk(key, new Uint8Array(10), 0, true)).rejects.toThrow();
+    });
+
+    it('counts chunks and sizes correctly', () => {
+      expect(chunkCountFor(0, 100)).toBe(1);
+      expect(chunkCountFor(100, 100)).toBe(1);
+      expect(chunkCountFor(101, 100)).toBe(2);
+      expect(encryptedSizeFor(250, 100)).toBe(250 + 3 * CHUNK_OVERHEAD);
+    });
+  });
+});

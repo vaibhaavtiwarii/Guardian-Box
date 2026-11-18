@@ -5,6 +5,7 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  HeadObjectCommand,
   HeadBucketCommand,
   CreateBucketCommand,
 } from '@aws-sdk/client-s3';
@@ -150,7 +151,40 @@ export async function deleteEncryptedBlob(key: string): Promise<void> {
 
   const filePath = path.join(LOCAL_STORAGE_DIR, key);
   if (fs.existsSync(filePath)) {
-    await fs.promises.unlink(filePath);
+    if (fs.statSync(filePath).isDirectory()) {
+      // A file's chunks live in a folder locally; remove the folder once it is empty.
+      await fs.promises.rmdir(filePath).catch(() => undefined);
+    } else {
+      await fs.promises.unlink(filePath);
+    }
   }
 }
 
+
+/** True if an object exists under `key`. */
+export async function blobExists(key: string): Promise<boolean> {
+  if (!useLocalFallback) {
+    try {
+      await s3Client.send(new HeadObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+      return true;
+    } catch (err: any) {
+      if (err?.name === 'NotFound' || err?.name === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404) {
+        return false;
+      }
+      if (S3_STRICT) throw err;
+      console.warn(`[Storage] S3 head failed, checking local storage:`, err);
+    }
+  }
+  return fs.existsSync(path.join(LOCAL_STORAGE_DIR, key));
+}
+
+/**
+ * Delete every chunk of a file. `prefix` is the record's s3_key; chunk i is `${prefix}/${i}`.
+ * The bare prefix is deleted too, which removes the single object that older versions stored.
+ */
+export async function deleteFileBlobs(prefix: string, chunkCount: number): Promise<void> {
+  for (let i = 0; i < chunkCount; i++) {
+    await deleteEncryptedBlob(`${prefix}/${i}`);
+  }
+  await deleteEncryptedBlob(prefix);
+}

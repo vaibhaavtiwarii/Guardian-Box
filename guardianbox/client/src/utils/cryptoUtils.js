@@ -50,48 +50,111 @@ export function generateIV() {
   return crypto.getRandomValues(new Uint8Array(12));
 }
 
+// ---------------------------------------------------------------------------
+// Chunked encryption
+//
+// Big files are split into CHUNK_SIZE pieces and each piece is encrypted on its own,
+// so neither the browser nor the server ever has to hold the whole file at once.
+//
+//   stored chunk  =  IV (12 random bytes)  ||  AES-GCM ciphertext + 16-byte tag
+//
+// Every chunk is authenticated together with its position (index + "this is the last
+// chunk" flag) as additional data. A server that reorders, duplicates, drops or
+// truncates chunks therefore makes decryption fail instead of returning a damaged file.
+// ---------------------------------------------------------------------------
+
+export const CHUNK_SIZE = 4 * 1024 * 1024; // plaintext bytes per chunk
+export const IV_BYTES = 12;
+export const TAG_BYTES = 16;
+export const CHUNK_OVERHEAD = IV_BYTES + TAG_BYTES; // bytes added to every chunk
+
+/** How many chunks a file of `size` bytes is split into (an empty file still has one). */
+export function chunkCountFor(size, chunkSize = CHUNK_SIZE) {
+  return Math.max(1, Math.ceil(size / chunkSize));
+}
+
+/** Total bytes stored on the server for a file of `size` bytes. */
+export function encryptedSizeFor(size, chunkSize = CHUNK_SIZE) {
+  return size + CHUNK_OVERHEAD * chunkCountFor(size, chunkSize);
+}
+
+// Additional authenticated data: chunk index (uint32, big endian) + final-chunk flag.
+function chunkAad(index, isFinal) {
+  const aad = new Uint8Array(5);
+  new DataView(aad.buffer).setUint32(0, index, false);
+  aad[4] = isFinal ? 1 : 0;
+  return aad;
+}
+
 /**
- * Encrypt file data with AES-256-GCM
+ * Encrypt one chunk. Returns IV || ciphertext || tag.
+ * @param {CryptoKey} key
+ * @param {ArrayBuffer} plaintext
+ * @param {number} index - Position of this chunk in the file
+ * @param {boolean} isFinal - True for the last chunk
+ * @returns {Promise<Uint8Array>}
+ */
+export async function encryptChunk(key, plaintext, index, isFinal) {
+  const iv = generateIV();
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv, additionalData: chunkAad(index, isFinal) },
+    key,
+    plaintext
+  );
+  const out = new Uint8Array(IV_BYTES + ciphertext.byteLength);
+  out.set(iv, 0);
+  out.set(new Uint8Array(ciphertext), IV_BYTES);
+  return out;
+}
+
+/**
+ * Decrypt one chunk produced by encryptChunk. Rejects if the key, position or data is wrong.
+ * @param {CryptoKey} key
+ * @param {ArrayBuffer|Uint8Array} chunk
+ * @param {number} index
+ * @param {boolean} isFinal
+ * @returns {Promise<ArrayBuffer>}
+ */
+export async function decryptChunk(key, chunk, index, isFinal) {
+  const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+  if (bytes.byteLength < CHUNK_OVERHEAD) {
+    throw new Error('The encrypted data is damaged or incomplete.');
+  }
+  const iv = bytes.slice(0, IV_BYTES);
+  const ciphertext = bytes.slice(IV_BYTES);
+  return crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv, additionalData: chunkAad(index, isFinal) },
+    key,
+    ciphertext
+  );
+}
+
+/**
+ * Convenience: encrypt a whole buffer as a single (final) chunk.
  * @param {ArrayBuffer} data - Plaintext file data buffer
  * @param {string} password - Secret password/key
- * @returns {Promise<{ ciphertext: ArrayBuffer, iv: string, salt: string }>}
+ * @returns {Promise<{ ciphertext: ArrayBuffer, salt: string }>}
  */
 export async function encryptFile(data, password) {
   const salt = generateSalt();
-  const iv = generateIV();
   const key = await deriveKey(password, salt);
-
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    data
-  );
-
+  const chunk = await encryptChunk(key, data, 0, true);
   return {
-    ciphertext,
-    iv: arrayBufferToBase64(iv),
+    ciphertext: chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength),
     salt: arrayBufferToBase64(salt)
   };
 }
 
 /**
- * Decrypt file data with AES-256-GCM
- * @param {ArrayBuffer} ciphertext - Encrypted ciphertext buffer
+ * Convenience: decrypt a buffer produced by encryptFile.
+ * @param {ArrayBuffer} ciphertext
  * @param {string} password - Secret password/key
- * @param {string} ivBase64 - Base64 encoded Initialization Vector
  * @param {string} saltBase64 - Base64 encoded PBKDF2 salt
  * @returns {Promise<ArrayBuffer>}
  */
-export async function decryptFile(ciphertext, password, ivBase64, saltBase64) {
-  const iv = base64ToUint8Array(ivBase64);
-  const salt = base64ToUint8Array(saltBase64);
-  const key = await deriveKey(password, salt);
-
-  return crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    ciphertext
-  );
+export async function decryptFile(ciphertext, password, saltBase64) {
+  const key = await deriveKey(password, base64ToUint8Array(saltBase64));
+  return decryptChunk(key, ciphertext, 0, true);
 }
 
 /**

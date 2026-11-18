@@ -5,12 +5,10 @@ import path from 'path';
 import fs from 'fs';
 import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
-import multer from 'multer';
 import fileRoutes from './routes/file.routes';
 import { initDb } from './config/db';
 import { initStorage } from './services/storage.service';
 import { startCleanupJob, runCleanup } from './utils/cleanup';
-import { MAX_UPLOAD_MB } from './middleware/upload';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -57,19 +55,23 @@ app.use((req, res, next) => {
   next();
 });
 
-// Minimal in-memory rate limiter for the API (per IP, per minute).
+// Minimal in-memory rate limiter for the API (per IP, per minute). Chunk transfers get a
+// much higher allowance because one big file is hundreds of requests.
 const RATE_LIMIT = parseInt(process.env.RATE_LIMIT_PER_MIN || '120', 10);
+const CHUNK_RATE_LIMIT = parseInt(process.env.CHUNK_RATE_LIMIT_PER_MIN || '1500', 10);
 const hits = new Map<string, { count: number; reset: number }>();
 app.use('/api', (req, res, next) => {
+  const isChunk = /^\/files\/[^/]+\/chunks\//.test(req.path);
+  const key = `${isChunk ? 'chunk' : 'api'}:${req.ip || 'unknown'}`;
+  const limit = isChunk ? CHUNK_RATE_LIMIT : RATE_LIMIT;
   const now = Date.now();
-  const ip = req.ip || 'unknown';
-  const entry = hits.get(ip);
+  const entry = hits.get(key);
   if (!entry || entry.reset < now) {
-    hits.set(ip, { count: 1, reset: now + 60_000 });
+    hits.set(key, { count: 1, reset: now + 60_000 });
     return next();
   }
   entry.count++;
-  if (entry.count > RATE_LIMIT) {
+  if (entry.count > limit) {
     res.status(429).json({ error: 'Too many requests' });
     return;
   }
@@ -77,10 +79,10 @@ app.use('/api', (req, res, next) => {
 });
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, e] of hits) if (e.reset < now) hits.delete(ip);
+  for (const [k, e] of hits) if (e.reset < now) hits.delete(k);
 }, 60_000).unref();
 
-app.use(express.json());
+app.use(express.json({ limit: '64kb' }));
 
 // Health check endpoint (used by the hosting platform)
 app.get('/api/health', (_req, res) => {
@@ -121,12 +123,14 @@ if (fs.existsSync(indexHtml)) {
   console.log('[Web] No built UI found (client/dist) — API only. Use the Vite dev server for the UI.');
 }
 
-// Upload errors (e.g. file too large) -> clean JSON instead of an HTML stack trace.
-app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
-  if (err instanceof multer.MulterError) {
-    const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
-    const msg = err.code === 'LIMIT_FILE_SIZE' ? `File too large (max ${MAX_UPLOAD_MB} MB)` : err.message;
-    res.status(status).json({ error: msg });
+// Body errors (bad JSON, oversized chunk) -> clean JSON instead of an HTML stack trace.
+app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+  if (err?.type === 'entity.too.large') {
+    res.status(413).json({ error: 'Request body too large' });
+    return;
+  }
+  if (err?.type === 'entity.parse.failed') {
+    res.status(400).json({ error: 'Invalid JSON' });
     return;
   }
   next(err);

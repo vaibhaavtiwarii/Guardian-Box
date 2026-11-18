@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  CHUNK_OVERHEAD,
+  chunkCountFor,
+  decryptChunk,
+  deriveKey,
+  encryptChunk,
   encryptFile,
   decryptFile,
   generatePassword,
@@ -18,13 +23,12 @@ test('GuardianBox Web Crypto Engine (E2EE)', async (t) => {
     const password = 'CorrectHorseBatteryStaple#2026';
 
     // 1. Encrypt
-    const { ciphertext, iv, salt } = await encryptFile(originalBuffer, password);
+    const { ciphertext, salt } = await encryptFile(originalBuffer, password);
     assert.ok(ciphertext.byteLength > 0, 'Ciphertext should be non-empty');
-    assert.ok(iv, 'IV should be present');
     assert.ok(salt, 'Salt should be present');
 
     // 2. Decrypt
-    const decryptedBuffer = await decryptFile(ciphertext, password, iv, salt);
+    const decryptedBuffer = await decryptFile(ciphertext, password, salt);
     const decoder = new TextDecoder();
     const decryptedText = decoder.decode(decryptedBuffer);
 
@@ -38,8 +42,8 @@ test('GuardianBox Web Crypto Engine (E2EE)', async (t) => {
     }
     const password = generatePassword(32);
 
-    const { ciphertext, iv, salt } = await encryptFile(binaryData.buffer, password);
-    const decryptedBuffer = await decryptFile(ciphertext, password, iv, salt);
+    const { ciphertext, salt } = await encryptFile(binaryData.buffer, password);
+    const decryptedBuffer = await decryptFile(ciphertext, password, salt);
     const decryptedBytes = new Uint8Array(decryptedBuffer);
 
     assert.equal(decryptedBytes.length, binaryData.length, 'Length must match');
@@ -52,11 +56,11 @@ test('GuardianBox Web Crypto Engine (E2EE)', async (t) => {
     const password = 'SecretPassword123';
     const wrongPassword = 'WrongPassword456';
 
-    const { ciphertext, iv, salt } = await encryptFile(originalBuffer, password);
+    const { ciphertext, salt } = await encryptFile(originalBuffer, password);
 
     await assert.rejects(
       async () => {
-        await decryptFile(ciphertext, wrongPassword, iv, salt);
+        await decryptFile(ciphertext, wrongPassword, salt);
       },
       /operation failed|tag|error/i,
       'Decryption with wrong password should fail authentication check'
@@ -68,14 +72,14 @@ test('GuardianBox Web Crypto Engine (E2EE)', async (t) => {
     const originalBuffer = encoder.encode('Integrity Protected Payload').buffer;
     const password = 'SuperSecretKey';
 
-    const { ciphertext, iv, salt } = await encryptFile(originalBuffer, password);
+    const { ciphertext, salt } = await encryptFile(originalBuffer, password);
 
     const tampered = new Uint8Array(ciphertext);
     tampered[0] ^= 0xff; // Flip bits in first byte
 
     await assert.rejects(
       async () => {
-        await decryptFile(tampered.buffer, password, iv, salt);
+        await decryptFile(tampered.buffer, password, salt);
       },
       'Tampered ciphertext must be rejected by AES-GCM'
     );
@@ -101,3 +105,44 @@ test('GuardianBox Web Crypto Engine (E2EE)', async (t) => {
   });
 });
 
+test('chunked encryption', async (t) => {
+  const key = await deriveKey('chunk-test-key', generateSalt());
+  const bytes = (n, fill) => new Uint8Array(n).fill(fill).buffer;
+
+  await t.test('round-trips several chunks and adds exactly 28 bytes per chunk', async () => {
+    const parts = [bytes(1000, 1), bytes(1000, 2), bytes(10, 3)];
+    const enc = [];
+    for (let i = 0; i < parts.length; i++) enc.push(await encryptChunk(key, parts[i], i, i === parts.length - 1));
+    for (let i = 0; i < enc.length; i++) {
+      assert.equal(enc[i].byteLength, parts[i].byteLength + CHUNK_OVERHEAD);
+      const dec = new Uint8Array(await decryptChunk(key, enc[i], i, i === enc.length - 1));
+      assert.deepEqual(Array.from(dec), Array.from(new Uint8Array(parts[i])));
+    }
+  });
+
+  await t.test('uses a fresh IV for every chunk, even for identical plaintext', async () => {
+    const a = await encryptChunk(key, bytes(64, 7), 0, false);
+    const b = await encryptChunk(key, bytes(64, 7), 0, false);
+    assert.notDeepEqual(Array.from(a.slice(0, 12)), Array.from(b.slice(0, 12)));
+  });
+
+  await t.test('rejects chunks that were reordered, moved or marked as final', async () => {
+    const c0 = await encryptChunk(key, bytes(100, 1), 0, false);
+    await assert.rejects(decryptChunk(key, c0, 1, false));
+    await assert.rejects(decryptChunk(key, c0, 0, true));
+  });
+
+  await t.test('rejects a tampered or too-short chunk', async () => {
+    const c = await encryptChunk(key, bytes(100, 1), 0, true);
+    const tampered = c.slice();
+    tampered[20] ^= 0xff;
+    await assert.rejects(decryptChunk(key, tampered, 0, true));
+    await assert.rejects(decryptChunk(key, new Uint8Array(10), 0, true));
+  });
+
+  await t.test('counts chunks correctly', () => {
+    assert.equal(chunkCountFor(0, 100), 1);
+    assert.equal(chunkCountFor(100, 100), 1);
+    assert.equal(chunkCountFor(101, 100), 2);
+  });
+});

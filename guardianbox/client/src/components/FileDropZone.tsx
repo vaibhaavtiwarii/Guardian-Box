@@ -7,7 +7,7 @@ interface FileDropZoneProps {
   selectedFile: File | null;
 }
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+import { MAX_FILE_BYTES as MAX_FILE_SIZE } from '../utils/format';
 
 export default function FileDropZone({ onFileSelected, selectedFile }: FileDropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
