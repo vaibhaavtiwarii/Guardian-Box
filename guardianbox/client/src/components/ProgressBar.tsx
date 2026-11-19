@@ -1,11 +1,11 @@
 /** Thin progress bar with a text label, shown while a large file is being processed. */
-export default function ProgressBar({ done, total, label }: { done: number; total: number; label: string }) {
+export default function ProgressBar({ done, total, label, detail }: { done: number; total: number; label: string; detail?: string }) {
   const percent = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
     <div className="mb-4">
       <div className="mb-2 flex items-center justify-between text-sm text-steel">
         <span>{label}</span>
-        <span className="tabular-nums text-paper">{percent}%</span>
+        <span className="tabular-nums text-paper">{detail ? `${detail}, ${percent}%` : `${percent}%`}</span>
       </div>
       <div
         role="progressbar"

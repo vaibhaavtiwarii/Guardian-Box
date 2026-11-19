@@ -29,7 +29,7 @@ GuardianBox is an **End-to-End Encrypted (E2EE)** file sharing service designed 
   <host>/file/abc#MyKey               Database: metadata only (no keys)
 ```
 
-1. **Upload**: the user selects a file → enters (or generates) a key → the browser splits the file into 4 MB chunks, encrypts each one with **AES-256-GCM**, and uploads the encrypted chunks one at a time. Only ciphertext ever leaves the browser.
+1. **Upload**: the user selects a file → enters (or generates) a key → the browser splits the file into 4 MB chunks, encrypts each one with **AES-256-GCM**, and uploads the encrypted chunks four at a time. Only ciphertext ever leaves the browser.
 2. **Share**: a link is generated with the file ID in the path and the decryption key in the **URL hash** (`#`). Browsers never send the hash fragment to the server.
 3. **Download**: the recipient opens the link → the browser reads the key from the hash → fetches the encrypted blob → decrypts it client-side → saves the original file.
 4. **Expire**: files are deleted automatically after a chosen time (**hourly cron job**) or after N downloads (**burn after reading**).

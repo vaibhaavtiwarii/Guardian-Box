@@ -136,7 +136,10 @@ export async function uploadChunk(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    const started = performance.now();
     await putEncryptedBlob(chunkKey(record, index), body, 'application/octet-stream');
+    // Lets the browser (DevTools / console) see how much of the request was storage time.
+    res.set('Server-Timing', `storage;dur=${Math.round(performance.now() - started)}`);
     res.status(204).end();
   } catch (error) {
     console.error('Chunk upload error:', error);
@@ -269,6 +272,7 @@ export async function downloadChunk(req: Request, res: Response): Promise<void> 
     }
 
     let data: Buffer;
+    const started = performance.now();
     try {
       data = await getEncryptedBlob(chunkKey(record, index));
     } catch (err) {
@@ -282,7 +286,11 @@ export async function downloadChunk(req: Request, res: Response): Promise<void> 
       throw err;
     }
 
-    res.set({ 'Content-Type': 'application/octet-stream', 'Content-Length': String(data.length) });
+    res.set({
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': String(data.length),
+      'Server-Timing': `storage;dur=${Math.round(performance.now() - started)}`,
+    });
 
     // Burn after reading: once the last chunk of the last allowed download has been fully
     // sent, delete every chunk and the record.

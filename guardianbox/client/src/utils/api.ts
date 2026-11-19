@@ -15,6 +15,42 @@ export class LinkGoneError extends Error {}
 
 export type ProgressCallback = (done: number, total: number) => void;
 
+/** How many chunks are in flight at once. Hides per-request latency; memory use stays at a few chunks. */
+const CONCURRENCY = 4;
+
+/** Run `worker(i)` for i in [from, to) with at most `limit` running at once. Stops at the first error. */
+async function runPool(from: number, to: number, limit: number, worker: (i: number) => Promise<void>): Promise<void> {
+  let next = from;
+  let failed = false;
+  const lane = async () => {
+    while (!failed) {
+      const i = next++;
+      if (i >= to) return;
+      try {
+        await worker(i);
+      } catch (err) {
+        failed = true;
+        throw err;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, to - from)) }, lane));
+}
+
+/** Milliseconds the server spent talking to object storage, from the Server-Timing header. */
+function storageMs(res: Response): number {
+  const m = /storage;dur=(\d+)/.exec(res.headers.get('Server-Timing') || '');
+  return m ? Number(m[1]) : 0;
+}
+
+function logStats(kind: string, chunks: number, started: number, storageTotal: number) {
+  const seconds = (performance.now() - started) / 1000;
+  console.info(
+    `[GuardianBox] ${kind}: ${chunks} chunk(s) in ${seconds.toFixed(1)}s, ` +
+      `server storage time ${(storageTotal / 1000).toFixed(1)}s in total (${CONCURRENCY} at a time)`
+  );
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** fetch with a few retries for network drops and 5xx answers (used for idempotent requests). */
@@ -75,7 +111,10 @@ export async function uploadFile(
   const { id } = (await initRes.json()) as { id: string };
 
   onProgress?.(0, chunkCount);
-  for (let i = 0; i < chunkCount; i++) {
+  const started = performance.now();
+  let finished = 0;
+  let storageTotal = 0;
+  await runPool(0, chunkCount, CONCURRENCY, async (i) => {
     const plain = await file.slice(i * CHUNK_SIZE, Math.min(file.size, (i + 1) * CHUNK_SIZE)).arrayBuffer();
     const encrypted = await encryptChunk(key, plain, i, i === chunkCount - 1);
     const res = await fetchWithRetry(`/api/files/${id}/chunks/${i}`, {
@@ -84,8 +123,10 @@ export async function uploadFile(
       body: encrypted as unknown as BodyInit,
     });
     if (!res.ok) throw new Error(await errorMessage(res, 'Upload failed'));
-    onProgress?.(i + 1, chunkCount);
-  }
+    storageTotal += storageMs(res);
+    onProgress?.(++finished, chunkCount);
+  });
+  logStats('upload', chunkCount, started, storageTotal);
 
   const done = await fetchWithRetry(`/api/files/${id}/complete`, { method: 'POST' });
   if (!done.ok) throw new Error(await errorMessage(done, 'Could not finish the upload'));
@@ -119,10 +160,13 @@ export async function downloadAndDecrypt(
   hooks.onClaimed?.();
 
   const key = await deriveKey(password, base64ToUint8Array(session.salt));
-  const parts: ArrayBuffer[] = [];
+  const parts: ArrayBuffer[] = new Array(session.chunkCount);
   hooks.onProgress?.(0, session.chunkCount);
+  const started = performance.now();
+  let finished = 0;
+  let storageTotal = 0;
 
-  for (let i = 0; i < session.chunkCount; i++) {
+  const fetchChunk = async (i: number) => {
     const res = await fetchWithRetry(`/api/files/${id}/chunks/${i}`, {
       headers: { 'X-Download-Token': session.token },
     });
@@ -131,11 +175,18 @@ export async function downloadAndDecrypt(
     }
     if (res.status === 401) throw new Error('This download session expired. Open the link again to start over.');
     if (!res.ok) throw new Error(await errorMessage(res, 'Download failed'));
-
+    storageTotal += storageMs(res);
     const encrypted = await res.arrayBuffer();
-    parts.push(await decryptChunk(key, encrypted, i, i === session.chunkCount - 1));
-    hooks.onProgress?.(i + 1, session.chunkCount);
-  }
+    parts[i] = await decryptChunk(key, encrypted, i, i === session.chunkCount - 1);
+    hooks.onProgress?.(++finished, session.chunkCount);
+  };
+
+  // All chunks but the last are fetched a few at a time. The last chunk is requested only
+  // after every other one has arrived, because the server treats "last chunk delivered" as
+  // "download finished" when it applies burn-after-reading.
+  await runPool(0, session.chunkCount - 1, CONCURRENCY, fetchChunk);
+  await fetchChunk(session.chunkCount - 1);
+  logStats('download', session.chunkCount, started, storageTotal);
 
   return { blob: new Blob(parts, { type: session.mimeType }), name: session.originalName };
 }
